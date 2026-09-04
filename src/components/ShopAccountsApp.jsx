@@ -15,11 +15,17 @@ import {
   Banknote,
   Truck,
 } from "lucide-react";
+import Dashboard from "./Dashboard";
+import InvoicesTab from "./InvoicesTab";
+import InventoryTab from "./InventoryTab";
+import ExpensesTab from "./ExpensesTab";
+import CustomersTab from "./CustomersTab";
+import SuppliersTab from "./SuppliersTab";
 
 /* ---------------------------------------------------------
-   Ledger & Vault — shop accounting
-   Tabs: Dashboard / Invoices / Inventory / Expenses
-   Persistence: window.storage (local data on desktop)
+   Ledger & Vault — shop accounting (Desktop App)
+   Tabs: Dashboard / Invoices / Inventory / Expenses / Customers / Suppliers
+   Persistence: Electron IPC with local file storage
 --------------------------------------------------------- */
 
 const FONT_IMPORT_ID = "shop-accounts-fonts";
@@ -93,47 +99,6 @@ async function saveKey(key, value) {
   } catch (error) {
     console.error("Error saving to storage:", error);
   }
-}
-
-/* ---------------- shared UI bits ---------------- */
-
-function StatCard({ label, value, tone = "ink", icon: Icon, sub }) {
-  return (
-    <div className="stat-card">
-      <div className={`stat-icon tone-${tone}`}>{Icon ? <Icon size={18} strokeWidth={2.25} /> : null}</div>
-      <div className="stat-body">
-        <div className="stat-label">{label}</div>
-        <div className={`stat-value tone-${tone}`}>{value}</div>
-        {sub ? <div className="stat-sub">{sub}</div> : null}
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ title, hint }) {
-  return (
-    <div className="empty-state">
-      <Circle size={26} strokeWidth={1.5} />
-      <div className="empty-title">{title}</div>
-      <div className="empty-hint">{hint}</div>
-    </div>
-  );
-}
-
-function Modal({ title, onClose, children }) {
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="إغلاق">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-      </div>
-    </div>
-  );
 }
 
 /* ==================================================
@@ -291,64 +256,44 @@ export default function ShopAccountsApp() {
                 goTo={setTab}
               />
             )}
+            {tab === "invoices" && (
+              <InvoicesTab
+                invoices={invoices}
+                setInvoices={updateInvoices}
+                products={products}
+                setProducts={updateProducts}
+                customers={customers}
+                setCustomers={updateCustomers}
+              />
+            )}
+            {tab === "customers" && (
+              <CustomersTab
+                customers={customers}
+                setCustomers={updateCustomers}
+                invoices={invoices}
+                receipts={receipts}
+                setReceipts={updateReceipts}
+              />
+            )}
+            {tab === "suppliers" && (
+              <SuppliersTab
+                suppliers={suppliers}
+                setSuppliers={updateSuppliers}
+                purchases={purchases}
+                setPurchases={updatePurchases}
+                payments={payments}
+                setPayments={updatePayments}
+              />
+            )}
+            {tab === "inventory" && (
+              <InventoryTab products={products} setProducts={updateProducts} />
+            )}
+            {tab === "expenses" && (
+              <ExpensesTab expenses={expenses} setExpenses={updateExpenses} />
+            )}
           </div>
         )}
       </main>
-    </div>
-  );
-}
-
-/* ==================================================
-   DASHBOARD (Simple version for now)
-================================================== */
-
-function Dashboard({ totals, products, invoices, expenses, customers, receipts, suppliers, purchases, payments, goTo }) {
-  const recentInvoices = [...invoices].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5);
-  const lowStockItems = products.filter((p) => Number(p.qty) <= LOW_STOCK_THRESHOLD);
-
-  return (
-    <div className="dash">
-      <div className="hero">
-        <div className="hero-label">صافي الربح</div>
-        <div className={`hero-number ${totals.net >= 0 ? "pos" : "neg"}`}>{fmtMoney(totals.net)}</div>
-        <div className="hero-hint">
-          {totals.net >= 0
-            ? "مبيعاتك أكبر من مصروفاتك — استمر كده"
-            : "مصروفاتك أكبر من مبيعاتك دلوقتي"}
-        </div>
-      </div>
-
-      <div className="stat-grid">
-        <StatCard label="إجمالي المبيعات" value={fmtMoney(totals.sales)} tone="green" icon={CheckCircle2} />
-        <StatCard
-          label="ربح البضاعة المباعة"
-          value={fmtMoney(totals.grossProfit)}
-          tone={totals.grossProfit >= 0 ? "green" : "brick"}
-          icon={Package}
-          sub="الفرق بين سعر البيع وسعر الشراء"
-        />
-        <StatCard label="إجمالي المصروفات" value={fmtMoney(totals.exp)} tone="brick" icon={Wallet} />
-        <StatCard
-          label="مستحق من العملاء"
-          value={fmtMoney(totals.receivable)}
-          tone={totals.receivable > 0 ? "gold" : "green"}
-          icon={Users}
-          sub="بعد خصم المقبوضات النقدية"
-        />
-        <StatCard
-          label="مستحق للموردين"
-          value={fmtMoney(totals.payable)}
-          tone={totals.payable > 0 ? "brick" : "green"}
-          icon={Truck}
-          sub="بعد خصم المدفوعات"
-        />
-        <StatCard
-          label="أصناف قاربت تخلص"
-          value={totals.lowStock}
-          tone={totals.lowStock > 0 ? "brick" : "green"}
-          icon={AlertTriangle}
-        />
-      </div>
     </div>
   );
 }
@@ -438,6 +383,180 @@ const CSS = `
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* section */
+.section { display: flex; flex-direction: column; gap: 18px; }
+.section-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 14px; flex-wrap: wrap;
+}
+.section-head h2 {
+  font-family: 'Tajawal', sans-serif; color: var(--page); font-size: 24px;
+  font-weight: 900; margin: 0 0 3px;
+}
+.section-hint { color: #B9C4BA; font-size: 13.5px; margin: 0; }
+.head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.head-actions .ghost-btn { background: var(--page); }
+
+.primary-btn {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--gold); color: var(--cover);
+  border: none; border-radius: 10px;
+  padding: 10px 18px;
+  font-family: inherit; font-size: 14px; font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.primary-btn:hover { filter: brightness(1.06); }
+
+.ghost-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid var(--page-line);\n  border-radius: 9px; padding: 9px 16px;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink);
+  cursor: pointer;
+}
+.ghost-btn:hover { background: #F1EDE0; }
+.ghost-btn.small {
+  padding: 8px 12px; font-size: 12.5px; white-space: nowrap;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.icon-btn {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--muted); padding: 6px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+}
+.icon-btn:hover { background: #EFE9D8; }
+.icon-btn.danger:hover { background: var(--brick-soft); color: var(--brick); }
+
+.link-btn {
+  background: none; border: none; cursor: pointer;
+  color: #8A6B10; font-family: inherit; font-size: 13px; font-weight: 600;
+  padding: 0; display: inline-flex; align-items: center; gap: 4px;
+}
+.link-btn:hover { text-decoration: underline; }
+.link-btn-icon { display: inline-flex; }
+
+/* panel */
+.panel {
+  background: var(--page);
+  border: 1px solid var(--page-line);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.panel-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.panel-head h3 { font-family: 'Tajawal', sans-serif; font-size: 15.5px; font-weight: 700; margin: 0; }
+
+/* empty state */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 42px 20px; color: var(--muted); text-align: center;
+}
+.empty-title { font-weight: 700; color: var(--ink); font-size: 14.5px; }
+.empty-hint { font-size: 13px; }
+
+/* modal */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(20,35,28,0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; z-index: 50;
+}
+.modal-card {
+  background: var(--page); border-radius: 16px; width: 100%; max-width: 480px;
+  max-height: 88vh; overflow-y: auto;
+}
+.modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 20px 12px; border-bottom: 1px solid var(--page-line);
+}
+.modal-head h3 { font-family: 'Tajawal', sans-serif; font-size: 16.5px; font-weight: 700; margin: 0; }
+.modal-body { padding: 18px 20px 22px; }
+
+/* forms */
+.form { display: flex; flex-direction: column; gap: 14px; }
+.form label {
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--muted);
+}
+.form input, .form select {
+  font-family: inherit; font-size: 14px; color: var(--ink);
+  border: 1px solid var(--page-line); border-radius: 9px;
+  padding: 9px 11px; background: #fff;
+}
+.form input:focus, .form select:focus {
+  outline: 2px solid var(--gold); outline-offset: 1px;
+}
+.form-row.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.inline-add { display: flex; gap: 8px; align-items: center; }
+.inline-add select, .inline-add input { flex: 1; }
+
+.form-error {
+  background: var(--brick-soft); color: var(--brick);
+  border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: 600;
+}
+.form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+
+.lines-head { font-size: 13px; font-weight: 600; color: var(--muted); }
+.lines { display: flex; flex-direction: column; gap: 8px; }
+.line-row {
+  display: grid; grid-template-columns: 1fr 64px 90px 30px; gap: 8px; align-items: center;
+}
+.line-row select, .line-row input {
+  font-family: inherit; font-size: 13.5px;
+  border: 1px solid var(--page-line); border-radius: 8px;
+  padding: 8px 9px; background: #fff;
+}
+.qty-input { text-align: center; }
+.line-price { font-size: 13px; font-weight: 600; text-align: center; }
+
+.total-box {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--gold-soft); border-radius: 10px; padding: 12px 14px;
+  font-size: 13.5px; color: #6B540E;
+}
+.total-box strong { font-family: 'Tajawal', sans-serif; font-size: 17px; color: #6B540E; }
+
+.inline-hint {
+  background: var(--gold-soft); color: #6B540E; border-radius: 9px;
+  padding: 10px 12px; font-size: 13px;
+}
+.inline-hint.warn {
+  background: var(--brick-soft); color: var(--brick);
+}
+
+/* tables */
+.ledger-table { width: 100%; border-collapse: collapse; }
+.ledger-table td, .ledger-table th {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--page-line);
+  text-align: right;
+  font-size: 13.5px;
+}
+.ledger-table th {
+  color: var(--muted); font-weight: 600; font-size: 12.5px;
+}
+.ledger-table tr:last-child td { border-bottom: none; }
+.cell-main { font-weight: 600; }
+.cell-sub { color: var(--muted); }
+.cell-amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+.cell-amount.warn { color: var(--brick); }
+.cell-amount.neg { color: var(--brick); }
+.cell-amount.pos { color: var(--green); }
+.cell-status { font-size: 12.5px; font-weight: 600; }
+.cell-status.paid { color: var(--green); }
+.cell-status.unpaid { color: var(--brick); }
+.row-actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+
+.status-pill {
+  border: none; border-radius: 999px; padding: 5px 12px;
+  font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.status-pill.paid { background: var(--green-soft); color: var(--green); }
+.status-pill.unpaid { background: var(--brick-soft); color: var(--brick); }
+
+/* dashboard */
 .dash { display: flex; flex-direction: column; gap: 22px; }
 
 .hero {
@@ -489,38 +608,19 @@ const CSS = `
 .stat-value.tone-gold { color: #8A6B10; }
 .stat-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-.icon-btn {
-  border: none; background: transparent; cursor: pointer;
-  color: var(--muted); padding: 6px; border-radius: 7px;
-  display: flex; align-items: center; justify-content: center;
+.dash-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
 }
-.icon-btn:hover { background: #EFE9D8; }
-
-.modal-backdrop {
-  position: fixed; inset: 0; background: rgba(20,35,28,0.55);
-  display: flex; align-items: center; justify-content: center;
-  padding: 20px; z-index: 50;
-}
-.modal-card {
-  background: var(--page); border-radius: 16px; width: 100%; max-width: 480px;
-  max-height: 88vh; overflow-y: auto;
-}
-.modal-head {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 18px 20px 12px; border-bottom: 1px solid var(--page-line);
-}
-.modal-head h3 { font-family: 'Tajawal', sans-serif; font-size: 16.5px; font-weight: 700; margin: 0; }
-.modal-body { padding: 18px 20px 22px; }
-
-.empty-state {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 42px 20px; color: var(--muted); text-align: center;
-}
-.empty-title { font-weight: 700; color: var(--ink); font-size: 14.5px; }
-.empty-hint { font-size: 13px; }
 
 @media (max-width: 640px) {
   .topbar { padding: 16px 16px; }
   .page-wrap { padding: 0 14px; }
+  .form-row.two { grid-template-columns: 1fr; }
+  .line-row { grid-template-columns: 1fr 50px 70px 26px; }
+  .section-head { flex-direction: column; }
+  .head-actions { width: 100%; flex-direction: column; }
+  .head-actions button { width: 100%; }
 }
 `;
